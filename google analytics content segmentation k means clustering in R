@@ -1,0 +1,186 @@
+#install packages
+install.packages("googleAnalyticsR")
+install.packages("tidyverse")
+
+#load libraries
+library(googleAnalyticsR)
+library(tidyverse)
+
+#creating service account json key
+#http://code.markedmondson.me/googleAnalyticsR/articles/setup.html 
+ga_auth(json_file = "C:\\Users\\akhan\\Dropbox\\blog content\\2021\\Feb 2021\\K means clustering\\service-key.json")
+#check View Id's
+account_list <- ga_account_list()
+account_list$viewId
+#Assign View ID to var
+ga_id <- 41377551
+
+data <- google_analytics(ga_id,
+date_range = c("2020-03-01","2021-02-16"),
+metrics=c("pageviews","bounces","timeonpage",
+          "entrances","exits","pagevalue"),
+dimensions="ga:pageTitle",
+anti_sample=TRUE)
+
+plot <- ggplot (data=data,
+          aes(x=pageTitle,y=pageviews)) +
+            geom_col()
+#not so pretty plot
+plot          
+#sort data by desc pageviews
+d_sorted <- arrange(data, desc(pageviews))          
+#Min for PV variable shows 0 in Summary...seems like 
+summary(d_sorted)
+#0 pageviews doesn't help...let's exclude them
+d_subset <- subset(d_sorted,pageviews>0)
+summary(d_subset)
+view(d_subset)
+#Add row # as an ID so that it makes it easier to read
+#a chart for Pareto later
+#https://stackoverflow.com/questions/23518605/add-an-index-numeric-id-column-to-large-data-frame
+d_subset <- tibble::rowid_to_column(d_subset, "ID")
+view(d_subset)
+#geom_col to view pageview counts by pages (ID's)
+plot <- ggplot (data=d_subset,
+                aes(x=ID,y=pageviews)) +
+  geom_col()
+plot
+#column for cumulative running total of pageviews
+#https://nhsrcommunity.com/blog/pareto-chart-in-ggplot2/
+d_subset$cumsum <- cumsum(d_subset$pageviews)
+view(d_subset)
+#let's try out a pareto chart
+pareto <- ggplot(d_subset, aes(x=ID,y=pageviews)) +
+  geom_col() + 
+  geom_path(aes(y=cumsum, group=1),
+            colour="slateblue1", lty=3, size=0.9) +
+  labs(title = "Pareto Plot",
+       x = 'page id', y = 'pageviews')
+pareto
+summary(d_subset)
+
+install.packages("ggQC")
+library(ggQC)
+#https://stackoverflow.com/questions/1735540/creating-a-pareto-chart-with-ggplot2-and-r
+#SO solution: Package called ggQC for this
+ggplot2::ggplot(d_subset, aes(x = ID, y = pageviews)) +
+ggQC::stat_pareto(point.color = "red",
+                    point.size = 0.2,
+                    line.color = "black",
+                    bars.fill = c("blue"))
+#at appx page ID = 50 (top 50 pages), we can 
+#account for appx 80% of the total content
+d_top50 <- subset(d_subset,ID<=50)
+d_top50
+view(d_top50)
+#ok, now let's try to add a conditional field
+#that creates a blog post category using the keywords
+#from the page title. We can then use the blog post
+#category as the content group
+
+#https://stackoverflow.com/questions/51872718/how-to-detect-if-a-string-contains-a-regex-pattern-using-dplyr-pipe-mutate/51872769
+#SO solution on IF ELSE with str_detect
+d_top50content <- d_top50 %>%
+  mutate(pageTitle = tolower(pageTitle))%>%
+  mutate(postType = 
+    ifelse(str_detect
+      (pageTitle, "r programming|r studio|geom|ggplot"),"R programming",
+      ifelse(str_detect
+             (pageTitle, "data studio"),"Data Studio",
+      ifelse(str_detect
+          (pageTitle, "adobe launch"),"Adobe Launch",
+      ifelse(str_detect
+                 (pageTitle, "bigquery|big query"),"BQ",
+      ifelse(str_detect
+            (pageTitle, "facebook|social|fb|reach|matched"),"Facebook Ads",  
+      ifelse(str_detect
+         (pageTitle, "google cloud"),"GCP",
+         ifelse(str_detect
+                (pageTitle, "google analytics|ga app"),"GA",
+      ifelse(str_detect
+        (pageTitle, "google tag manager|gtm"),"GTM",
+        ifelse(str_detect
+               (pageTitle, "screaming frog|vital"),"SEO",
+      ifelse(str_detect
+          (pageTitle, "analytics log"),"Homepage",
+    ifelse(str_detect
+           (pageTitle, "adwords|search term"),"Google Ads",      
+          ifelse(str_detect
+           (pageTitle, "apriori"),"Algorithm",
+                 
+      "Other"))))))))))))
+    )
+view(d_top50content)
+#exclude homepage and others
+d_top50exclHPOthers <- subset(d_top50content,
+                postType!="Homepage")
+
+view(d_top50exclHPOthers)
+#remove cumulative sum column from the calculations
+d_top50exclHPOthers <- select(d_top50exclHPOthers, -cumsum)
+view(d_top50exclHPOthers)
+#relocate function to move the postType column to the front
+#https://dplyr.tidyverse.org/reference/relocate.html
+d_top50exclHPOthers <- relocate(d_top50exclHPOthers,postType,pageTitle)
+
+d_top50summary<- d_top50exclHPOthers %>%
+  group_by(postType)%>%
+  summarize(
+    br=sum(bounces)/sum(pageviews)*100,
+    timeonpage=sum(timeonpage)/sum(pageviews),
+    entrancerate=sum(entrances)/sum(pageviews)*100,
+    exitrate=sum(exits)/sum(pageviews)*100,
+    pagevaluetotal=sum(pagevalue),
+    pageviewstotal=sum(pageviews)
+    )%>%
+  mutate(br,timeonpage,entrancerate, exitrate,pagevaluetotal,
+         pageviewstotal)
+view(d_top50summary)
+d_top50summary <- relocate(d_top50summary,postType,pageviewstotal)
+view(d_top50summary)
+#SO solution to convert the row names for string to 
+#numeric values
+d_top50summary<- d_top50summary %>% remove_rownames %>% 
+  column_to_rownames(var="postType")
+
+d_top50summary <- scale(d_top50summary)
+view(d_top50summary)
+library(factoextra)
+library(ggplot2)
+#https://www.analyticsvidhya.com/blog/2020/02/4-types-of-distance-metrics-in-machine-learning/
+#main article used for k means code https://uc-r.github.io/kmeans_clustering
+distance <- get_dist(d_top50summary)
+fviz_dist(distance, 
+          gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+#https://www.youtube.com/watch?v=_UVHneBUBW0
+k2 <- kmeans(d_top50summary, 
+             centers = 2, nstart = 25)
+str(k2)
+k2
+fviz_cluster(k2, data = d_top50summary)
+#http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/118-principal-component-analysis-in-r-prcomp-vs-princomp/
+res.pca <- prcomp(d_top50summary, scale = TRUE)
+
+fviz_eig(res.pca)
+res.pca
+prcomp(d_top50summary)
+summary(res.pca)
+
+
+library(rstatix)
+k3 <- kmeans(d_top50summary, centers = 3, nstart = 25)
+k4 <- kmeans(d_top50summary, centers = 4, nstart = 25)
+k5 <- kmeans(d_top50summary, centers = 5, nstart = 25)
+# plots to compare
+p1 <- fviz_cluster(k2, geom = "point", data = df) + ggtitle("k = 2")
+p2 <- fviz_cluster(k3, geom = "point",  data = df) + ggtitle("k = 3")
+p3 <- fviz_cluster(k4, geom = "point",  data = df) + ggtitle("k = 4")
+p4 <- fviz_cluster(k5, geom = "point",  data = df) + ggtitle("k = 5")
+library(gridExtra)
+
+grid.arrange(p1, p2, p3, p4, nrow = 2)
+
+set.seed(123)
+fviz_nbclust(d_top50summary, 
+             kmeans, method = "wss")
+
