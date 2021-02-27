@@ -8,7 +8,7 @@ library(tidyverse)
 
 #creating service account json key
 #http://code.markedmondson.me/googleAnalyticsR/articles/setup.html 
-ga_auth(json_file = "C:\\Users\\akhan\\Dropbox\\blog content\\2021\\Feb 2021\\K means clustering\\service-key.json")
+ga_auth(json_file = "C:\\Folder-name-containing-JSON-file\\service-key.json")
 #check View Id's
 account_list <- ga_account_list()
 account_list$viewId
