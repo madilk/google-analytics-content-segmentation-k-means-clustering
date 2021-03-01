@@ -5,8 +5,8 @@ https://analyticslog.com/blog/2021/2/20/google-analytics-content-segmentation-vi
 but the TL;DR version is here:
 
 Main components of this whole R script are:
-1. API call to GA extract data
-2. Data wrangling to clean up and prepare the data
+1. API call to Google Analytics extract data
+2. Data wrangling to clean up, group page title data from Google Analytics and prepare the data
 3. Prepare distance matrix
 4. Compare K-means visually
 5. Decide on optimal # of clusters
